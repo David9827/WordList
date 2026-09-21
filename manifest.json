@@ -1,0 +1,10 @@
+{
+  "name": "Luyện Từ Vựng",
+  "short_name": "Từ Vựng",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#04050b",
+  "theme_color": "#04050b",
+  "lang": "vi"
+}

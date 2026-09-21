@@ -11,6 +11,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -459,6 +461,15 @@
         </div>
         <div id="fbUserLine" class="sub" style="margin-top:10px">Chưa đăng nhập</div>
         <div id="fbStatus" class="status" style="margin-top:6px"></div>
+        <div style="margin-top:14px;border-top:1px solid var(--line-soft);padding-top:14px">
+          <label class="field" style="margin-top:0"><span class="sumic" data-icon="bell" data-isize="16"></span> Thông báo đẩy (push) — VAPID key</label>
+          <input type="text" id="fcmVapid" placeholder="Web Push certificate — Key pair (public)">
+          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <button class="btn small" id="fcmEnableBtn">Bật thông báo đẩy trên thiết bị này</button>
+          </div>
+          <div id="fcmStatus" class="status" style="margin-top:6px"></div>
+          <div class="sub" style="margin-top:8px;line-height:1.6">Lấy VAPID: Firebase → <b>Project settings → Cloud Messaging → Web configuration → Generate key pair</b>. <b>iPhone:</b> phải <b>Thêm vào Màn hình chính</b> rồi mở app từ icon đó thì mới nhận được push (yêu cầu của iOS).</div>
+        </div>
         <div class="sub" style="margin-top:10px;line-height:1.6">
           Cần: tạo project ở <b>console.firebase.google.com</b> → bật <b>Authentication → Google</b> → tạo <b>Firestore</b> → mở phần cấu hình web app, sao chép <b>firebaseConfig</b> dán vào đây. Dữ liệu chỉ thuộc về tài khoản Google của bạn.
         </div>
@@ -1462,6 +1473,32 @@ function pushToCloud(){
     .catch(e=>setFbStatus('Lỗi lưu đám mây: '+(e.message||e), true));
 }
 function scheduleCloudPush(){ if(!fbReady() || !fbUser) return; clearTimeout(fbPushTimer); fbPushTimer=setTimeout(pushToCloud, 1500); }
+
+/* ===== Thông báo đẩy (FCM) ===== */
+let fbMessaging=null;
+async function enablePush(){
+  const st=document.getElementById('fcmStatus'), setP=(m,e,o)=>{ if(st){ st.textContent=m; st.className='status'+(e?' err':(o?' ok':'')); } };
+  if(!fbReady() || !fbUser){ setP('Hãy Kết nối Firebase + Đăng nhập Google trước.', true); return; }
+  if(typeof firebase==='undefined' || !firebase.messaging){ setP('SDK messaging chưa tải (cần internet).', true); return; }
+  if(!('Notification' in window) || !('serviceWorker' in navigator)){ setP('Trình duyệt không hỗ trợ thông báo.', true); return; }
+  const vapid=(document.getElementById('fcmVapid').value||'').trim();
+  if(!vapid){ setP('Hãy nhập VAPID key.', true); return; }
+  localStorage.setItem('vocab_fcm_vapid', vapid);
+  try{
+    setP('Đang xin quyền thông báo…');
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){ setP('Bạn chưa cho phép thông báo (kiểm tra Cài đặt Safari/trình duyệt).', true); return; }
+    const reg=await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    if(!fbMessaging) fbMessaging=firebase.messaging();
+    const token=await fbMessaging.getToken({ vapidKey:vapid, serviceWorkerRegistration:reg });
+    if(!token){ setP('Không lấy được token thiết bị.', true); return; }
+    await fbDb.collection('users').doc(fbUser.uid).set({
+      fcmTokens:{ [token]: true },
+      reminderTime: (localStorage.getItem('vocab_rem_time')||'20:00')
+    }, {merge:true});
+    setP('✔ Đã bật thông báo đẩy trên thiết bị này. Bạn sẽ nhận nhắc ôn hằng ngày.', false, true);
+  }catch(e){ setP('Lỗi bật push: '+(e && e.message || e), true); }
+}
 (function initFbSettings(){
   const cfgIn=document.getElementById('fbConfigInput'), connectBtn=document.getElementById('fbConnectBtn'),
         signBtn=document.getElementById('fbSignBtn'), syncBtn=document.getElementById('fbSyncBtn');
@@ -1476,6 +1513,8 @@ function scheduleCloudPush(){ if(!fbReady() || !fbUser) return; clearTimeout(fbP
   };
   signBtn.onclick=()=>{ if(fbUser) fbSignOut(); else fbSignIn(); };
   syncBtn.onclick=()=>{ if(fbUser) pullFromCloud(); };
+  const vIn=document.getElementById('fcmVapid'); if(vIn) vIn.value=localStorage.getItem('vocab_fcm_vapid')||'';
+  const fcmBtn=document.getElementById('fcmEnableBtn'); if(fcmBtn) fcmBtn.onclick=enablePush;
   if(fbConfig()) initFirebase();
   updateFbUI();
 })();
