@@ -184,7 +184,7 @@
     border:1px solid rgba(255,255,255,.09);
     box-shadow:0 24px 70px rgba(0,0,0,.5);
   }
-  .nav{background:rgba(3,4,9,.94);border-bottom:1px solid rgba(255,255,255,.1)}
+  .nav{background:rgba(22,24,30,.8);border-bottom:1px solid rgba(255,255,255,.1)}
   :root:not([data-theme="light"]) .tab{color:#cbd2ee}
   :root:not([data-theme="light"]) .tab:hover{color:#fff;background:rgba(255,255,255,.12)}
   :root:not([data-theme="light"]) .themebtn{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.16)}
@@ -1629,9 +1629,11 @@ vec3 stars(vec3 d){vec2 u=vec2(atan(d.z,d.x),acos(clamp(d.y,-1.0,1.0)));
  float tw=0.7+0.3*sin(u_time*0.9+hash13(vec3(floor(u*130.0),7.0))*40.0);
  return vec3(0.85,0.9,1.0)*s*tw*2.6+vec3(0.006,0.01,0.024);}
 float discNoise(vec3 pos,float distC,float distD){
- vec3 rc=vec3(distC*1.5+0.5, atan(-pos.x,-pos.z)*1.5, distD*1.5);
- float v=noise3(rc*vec3(0.7,1.0,1.3)+vec3(0.0,u_time*0.05,0.0));
- v+=0.5*noise3(rc*vec3(1.5,2.0,2.6)+vec3(0.0,u_time*0.08,0.0));
+ float ang=atan(-pos.x,-pos.z);
+ ang += u_time*(1.7/pow(max(distC,1.0),1.5));      // xoay vi sai: trong nhanh, ngoài chậm
+ vec3 rc=vec3(distC*1.5+0.5, ang*1.5, distD*1.5);
+ float v=noise3(rc*vec3(0.7,1.0,1.3)+vec3(0.0,u_time*0.06,0.0));
+ v+=0.5*noise3(rc*vec3(1.5,2.0,2.6)+vec3(0.0,u_time*0.1,0.0));
  return v;}
 void main(){
  vec2 uv=(gl_FragCoord.xy-0.5*u_res)/u_res.y;
@@ -1690,7 +1692,7 @@ void main(){
   function frame(now){
     requestAnimationFrame(frame);
     if(document.hidden || document.documentElement.getAttribute('data-theme')==='light') return;
-    if(now-last<40.0) return;                         // giới hạn ~24fps để đỡ hao pin
+    if(now-last<33.0) return;                         // giới hạn ~30fps
     last=now;
     resize(); gl.uniform2f(uRes,c.width,c.height); gl.uniform1f(uTime,(Date.now()-start)/1000);
     gl.drawArrays(gl.TRIANGLES,0,3);
