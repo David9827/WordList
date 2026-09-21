@@ -358,13 +358,32 @@
   html{scroll-behavior:smooth}
   @media (prefers-reduced-motion: reduce){*{animation:none!important;transition-duration:.01ms!important}}
 
+  /* an toàn tai thỏ / status bar khi thêm vào Màn hình chính */
+  .nav{padding-top:env(safe-area-inset-top,0px)}
+
+  /* ===== Điện thoại: thanh tab cuộn ngang ===== */
+  @media(max-width:720px){
+    .nav-inner{height:auto;flex-wrap:wrap;padding:8px 12px;gap:8px}
+    .brand{font-size:1rem}
+    .themebtn{margin-left:auto;width:38px;height:38px}
+    .tabs{order:3;width:100%;margin-left:0;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+    .tabs::-webkit-scrollbar{display:none}
+    .tab{flex:0 0 auto;white-space:nowrap}
+    .hero{padding:32px 6px 22px}
+  }
   @media(max-width:560px){
     :root{font-size:16px}
-    .hero h1{font-size:2.3rem}
+    .hero h1{font-size:2.2rem}
+    .hero p{font-size:1.05rem}
     .opts{grid-template-columns:1fr}
-    .fc-term{font-size:2.3rem}
-    .wordcard .term{font-size:2.1rem}
-    .panel{padding:22px}
+    .fc-term{font-size:2.2rem}
+    .wordcard .term{font-size:2rem}
+    .panel{padding:20px}
+    .wrap{padding:0 14px 90px}
+    .row>*{min-width:140px}
+    button.btn{padding:13px 20px}
+    .bigterm{font-size:1.9rem}
+    .sched-tile .n{font-size:1.6rem}
   }
 </style>
 </head>
