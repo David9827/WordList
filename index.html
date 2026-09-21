@@ -1073,7 +1073,7 @@ function saveWord(r, viNote, userEx){
     save();
     addStatus.textContent='✔ Đã lưu “'+r.term+'”. Sẵn sàng luyện tập!'; addStatus.className='status ok';
   }
-  recordActivity();
+  recordActivity('add');
   lookupResult.innerHTML=''; addInput.value=''; addInput.focus();
 }
 function meaningText(w){ if(w.vi) return w.vi; const f=(w.meanings||[])[0]; if(f&&f.defs[0]) return f.defs[0].def; return '(chưa có nghĩa)'; }
@@ -1246,7 +1246,7 @@ function renderReviewCard(w,item,productive){
   let checked=false;
   const doCheck=()=>{
     if(checked) return; checked=true;
-    recordActivity();
+    recordActivity('practice');
     const ok = productive ? checkWord(w,inp.value) : checkMeaning(w,inp.value);
     inp.disabled=true; btn.style.display='none';
     const fb=document.getElementById('rFb');
@@ -1309,6 +1309,7 @@ function startPractice(){
   renderStep();
 }
 function stepDone(result){ // true/false = có chấm; null = không chấm
+  recordActivity('practice');
   if(result!==null){ session.scored++; if(result) session.correct++; }
   session.sIdx++;
   if(session.sIdx>=STEPS.length){ session.sIdx=0; session.wIdx++; }
@@ -1725,15 +1726,19 @@ async function diagPush(){
   el.textContent=L.join('\n');
 }
 /* Ghi lại giờ hoạt động (để tự chọn giờ gửi push, không cần bạn chọn tay) */
-function recordActivity(){
+function recordActivity(kind){
   try{
-    const h=new Date().getHours();
+    const now=Date.now(), h=new Date().getHours();
     let raw={}; try{ raw=JSON.parse(localStorage.getItem('vocab_active_hours')||'{}'); }catch(_){}
     raw[h]=(raw[h]||0)+1;
     localStorage.setItem('vocab_active_hours', JSON.stringify(raw));
+    if(kind==='practice') localStorage.setItem('vocab_last_practice', String(now));
     if(typeof fbReady==='function' && fbReady() && fbUser){
       const inc=firebase.firestore.FieldValue.increment(1);
-      fbDb.collection('users').doc(fbUser.uid).set({ activityHours:{ [String(h)]: inc } }, {merge:true});
+      const payload={ activityHours:{ [String(h)]: inc }, lastActiveAt: now };
+      if(kind==='practice') payload.lastPracticeAt=now;
+      if(kind==='add')      payload.lastAddAt=now;
+      fbDb.collection('users').doc(fbUser.uid).set(payload, {merge:true});
     }
   }catch(e){}
 }
