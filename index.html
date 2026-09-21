@@ -706,8 +706,9 @@ let words = load();
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ return []; } }
 function save(){ localStorage.setItem(KEY, JSON.stringify(words)); refreshBadges(); if(typeof scheduleCloudPush==='function') scheduleCloudPush(); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
-function daysFromNow(n){ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function localDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayStr(){ return localDate(new Date()); }
+function daysFromNow(n){ const d=new Date(); d.setDate(d.getDate()+n); return localDate(d); }
 function dateDiffDays(dateStr){ const a=new Date(dateStr+'T00:00:00'), b=new Date(todayStr()+'T00:00:00'); return Math.round((a-b)/86400000); }
 
 /* ============================================================ ICON (Iconsax linear) ============================================================ */
@@ -1191,6 +1192,7 @@ function startReviewSession(){
   nextReviewCard();
 }
 function reviewDone(){
+  flushPendingRemote();
   const area=document.getElementById('reviewArea');
   const pct=revSession.total?Math.round(revSession.correct/revSession.total*100):100;
   area.innerHTML=`<div class="empty">✅ Đã ôn xong ${revSession.total} từ!<br>
@@ -1564,7 +1566,7 @@ function initFirebase(){
     if(!fbApp){
       fbApp=firebase.initializeApp(cfg);
       fbAuth=firebase.auth(); fbDb=firebase.firestore();
-      fbAuth.onAuthStateChanged(u=>{ fbUser=u; updateFbUI(); if(u){ pullFromCloud(); refreshPushToken(); } });
+      fbAuth.onAuthStateChanged(u=>{ fbUser=u; updateFbUI(); if(u){ pullFromCloud(); refreshPushToken(); startRealtimeSync(); } else if(fbUnsub){ try{fbUnsub();}catch(e){} fbUnsub=null; } });
     }
     return true;
   }catch(e){ setFbStatus('Lỗi cấu hình Firebase: '+(e.message||e), true); fbApp=null; return false; }
@@ -1589,6 +1591,42 @@ function mergeWords(local, cloud){
     else map[k] = ((cw.updatedAt||0) > (lw.updatedAt||0)) ? cw : lw;
   });
   return Object.values(map);
+}
+let fbUnsub=null, pendingRemote=null;
+function sessionBusy(){
+  try{
+    if(typeof revSession!=='undefined' && revSession && revSession.queue && revSession.queue.length) return true;
+    if(typeof session!=='undefined' && session && session.pool && session.wIdx<session.pool.length) return true;
+  }catch(e){}
+  return false;
+}
+function applyRemote(cloud){
+  const before=JSON.stringify(words.map(w=>[wordKey(w),w.updatedAt||0]).sort());
+  words=mergeWords(words, cloud||[]);
+  const after=JSON.stringify(words.map(w=>[wordKey(w),w.updatedAt||0]).sort());
+  if(before===after) return false;
+  localStorage.setItem(KEY, JSON.stringify(words)); refreshBadges();
+  const act=document.querySelector('[data-panel]:not(.hidden)');
+  const name=act?act.dataset.panel:'';
+  if(name==='list') renderList();
+  else if(name==='stats') renderStats();
+  else if(name==='review' && !sessionBusy()) renderReview();
+  setFbStatus('✔ Đã nhận thay đổi từ thiết bị khác ('+words.length+' từ)', false, true);
+  return true;
+}
+function startRealtimeSync(){
+  if(!fbReady() || !fbUser) return;
+  if(fbUnsub){ try{fbUnsub();}catch(e){} fbUnsub=null; }
+  fbUnsub = fbDb.collection('users').doc(fbUser.uid).onSnapshot(doc=>{
+    if(!doc.exists) return;
+    if(doc.metadata && doc.metadata.hasPendingWrites) return;   // bỏ qua ghi của chính mình
+    const cloud=doc.data().words||[];
+    if(sessionBusy()){ pendingRemote=cloud; return; }           // đang ôn thì hoãn lại
+    applyRemote(cloud);
+  }, err=>setFbStatus('Lỗi đồng bộ realtime: '+(err.message||err), true));
+}
+function flushPendingRemote(){
+  if(pendingRemote && !sessionBusy()){ const c=pendingRemote; pendingRemote=null; applyRemote(c); }
 }
 async function pullFromCloud(){
   if(!fbReady() || !fbUser) return;
@@ -1939,6 +1977,10 @@ void main(){
   }
   requestAnimationFrame(frame);
 })();
+
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden && typeof fbReady==='function' && fbReady() && fbUser){ flushPendingRemote(); pullFromCloud(); }
+});
 
 renderIcons(); refreshBadges(); addInput.focus();
 </script>
