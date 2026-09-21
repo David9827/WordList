@@ -1619,66 +1619,89 @@ function applyTheme(t){
   const VS='attribute vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}';
   const FS=`precision highp float;
 uniform vec2 u_res; uniform float u_time;
-float hash13(vec3 p){p=fract(p*0.1031);p+=dot(p,p.zyx+31.32);return fract((p.x+p.y)*p.z);}
-float noise3(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
- float a=hash13(i),b=hash13(i+vec3(1.0,0.0,0.0)),c=hash13(i+vec3(0.0,1.0,0.0)),d=hash13(i+vec3(1.0,1.0,0.0));
- float e=hash13(i+vec3(0.0,0.0,1.0)),g=hash13(i+vec3(1.0,0.0,1.0)),h=hash13(i+vec3(0.0,1.0,1.0)),k=hash13(i+vec3(1.0,1.0,1.0));
- return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y),mix(mix(e,g,f.x),mix(h,k,f.x),f.y),f.z);}
-vec3 stars(vec3 d){vec2 u=vec2(atan(d.z,d.x),acos(clamp(d.y,-1.0,1.0)));
- float s=pow(hash13(vec3(floor(u*130.0),1.0)),64.0);
- float tw=0.7+0.3*sin(u_time*0.9+hash13(vec3(floor(u*130.0),7.0))*40.0);
- return vec3(0.85,0.9,1.0)*s*tw*2.6+vec3(0.006,0.01,0.024);}
-// ===== tham số HIGH của repo =====
-const float innerR=0.8, outerR=4.4, width=0.16, maxR=5.0;
-const float gasThresh=0.132, transPow=4.0, densPow=8.22, intensity=24.51;
-const float accFalloff=7.6, accColorShift=1.31;
-const vec3 mainCol=vec3(0.0185,0.00273,0.0), innerColC=vec3(0.0666,0.00802,0.0);
-float sampleNoise(vec3 rc, float dfall){
- float val=0.0; float tt=u_time/20.0;
- vec3 o0=rc; o0.y+=tt*3.0;  val+=max(0.0, noise3(o0/2.0)-dfall)*transPow;   // lớp 1: scale 2, scroll 3
- vec3 o1=rc; o1.y+=tt*10.0; val+=max(0.0, noise3(o1/0.98)-dfall)*transPow;  // lớp 2: scale 0.98, scroll 10
- return val;}
-float pcurve(float x){ x=clamp(x,0.0,1.0); float k=3125.0/256.0; return k*pow(x,4.0)*(1.0-x); } // a=4,b=1
-void main(){
- vec2 uv=(gl_FragCoord.xy-0.5*u_res)/u_res.y;
- vec3 ro=vec3(0.0,1.35,-8.0);
- vec3 fwd=normalize(vec3(0.0,-0.16,1.0));
- vec3 rgt=normalize(cross(vec3(0.0,1.0,0.0),fwd)),up=cross(fwd,rgt);
- vec3 rd=normalize(uv.x*rgt+uv.y*up+1.5*fwd);
- vec3 ctr=vec3(0.0); float Rs=0.55; vec3 dDir=vec3(0.0,1.0,0.0);
- vec3 off=ro-ctr; float b=dot(off,rd),cc=dot(off,off)-maxR*maxR,hh=b*b-cc;
- if(hh<0.0){ gl_FragColor=vec4(stars(rd),1.0); return; }
- vec3 pos=ro+rd*max(0.0,-b-sqrt(hh)); vec3 dir=rd; vec3 gas=vec3(0.0); float hole=0.0;
- float st=0.06;                                    // stepSize nhỏ (đĩa mỏng, chi tiết)
- for(int s=0;s<300;s++){
-  vec3 cd=ctr-pos; float dist=length(cd);
-  float force=0.49/pow(max(dist,0.001),1.43);      // warpRay: gravConst/dist^attenuation
-  dir=normalize(dir + (cd/max(dist,1e-4))*force*st);
-  pos+=dir*st;
-  float distC=length(pos-ctr);
-  if(distC<Rs+st){ hole=1.0; break; }              // chân trời sự kiện
-  if(distC>maxR) break;
-  float distD=dot(dDir,pos-ctr);
-  float rg=1.0-clamp((distC-innerR)/outerR,0.0,1.0);
-  float density=pcurve(rg)*clamp(1.0-abs(distD)/width,0.0,1.0);   // hình dạng đĩa
-  if(density>0.01){
-   vec3 rc=vec3(distC*1.5+0.5, atan(-pos.x,-pos.z)*1.5, distD*1.5);   // cartesianToRadial
-   float dfall=mix(0.0, gasThresh, pow(distC,0.98));
-   float trans=sampleNoise(rc, dfall);
-   trans=mix(trans, intensity, clamp(pow(distC,-densPow),0.0,1.0));  // đậm dần vào tâm
-   float nd=clamp(1.0-distC/maxR,0.0,1.0);
-   float fall=pow(nd,accFalloff), cshift=pow(nd,accColorShift);
-   vec3 base=mix(mainCol, innerColC, cshift);
-   gas += mix(base, vec3(intensity), fall) * trans * st;           // trắng nóng vào tâm
+float hash21(vec2 p){vec2 a=fract(p*vec2(0.1031,0.1030));float d=a.x*a.y+a.x*0.33+a.y*0.71+33.33;a+=d;return fract((a.x+a.y)*a.x*a.y);}
+float hash31(vec3 p){vec3 a=fract(p*vec3(0.1031,0.1030,0.0973));
+ float d=a.x*(a.y+31.32)+a.y*(a.z+31.32)+a.z*(a.x+31.32);a+=d;return fract((a.x+a.y)*a.z);}
+float noise2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+ return mix(mix(hash21(i),hash21(i+vec2(1.0,0.0)),f.x),mix(hash21(i+vec2(0.0,1.0)),hash21(i+vec2(1.0,1.0)),f.x),f.y);}
+float fbm4(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise2(p);p*=vec2(2.07,2.03);a*=0.5;}return v;}
+float fbm3(vec2 p){float v=0.0,a=0.5;for(int i=0;i<3;i++){v+=a*noise2(p);p*=vec2(2.07,2.03);a*=0.5;}return v;}
+float fbm2o(vec2 p){float v=0.0,a=0.5;for(int i=0;i<2;i++){v+=a*noise2(p);p*=vec2(2.07,2.03);a*=0.5;}return v;}
+vec3 discColor(float u){
+ vec3 hot=vec3(1.0,0.86,0.56),mid=vec3(1.0,0.40,0.05),cold=vec3(0.48,0.09,0.01);
+ if(u<0.35) return mix(hot,mid,u/0.35);
+ return mix(mid,cold,(u-0.35)/0.65);}
+vec3 stars(vec3 d){
+ vec3 o=vec3(0.0);
+ for(int k=0;k<2;k++){
+  float sc=(k==0)?95.0:170.0;
+  vec3 p=d*sc; vec3 ic=floor(p); vec3 f=p-ic;
+  float seed=hash31(ic+vec3(11.0,23.0,5.0));
+  if(seed>0.955){
+   vec3 sp=vec3(hash31(ic),hash31(ic+vec3(31.0,7.0,13.0)),hash31(ic+vec3(3.0,41.0,57.0)));
+   float dist=length(f-sp);
+   float tw=0.7+0.3*sin(u_time*1.2+seed*120.0);
+   float b=smoothstep(0.16,0.0,dist)*(0.35+0.65*(seed-0.955)/0.045)*tw;
+   float warm=hash31(ic+vec3(71.0,17.0,29.0));
+   o+=b*vec3(0.80+0.20*warm,0.86,1.0-0.18*warm);
   }
  }
- vec3 col = (hole>0.5)?vec3(0.0):stars(dir);        // sao bị thấu kính
- col += 1.0-exp(-gas);                              // gộp đĩa khí
- col = pow(col, vec3(0.85));
- gl_FragColor=vec4(col,1.0);
+ float t=atan(d.z,d.x)/6.2831853+0.5, pv=acos(clamp(d.y,-1.0,1.0))/3.14159265;
+ o+=0.010*fbm3(vec2(t*8.0,pv*8.0))*vec3(0.45,0.5,0.95);
+ return o;}
+vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
+void main(){
+ vec2 uv=(gl_FragCoord.xy-0.5*u_res)/u_res.y;
+ float el=0.10, camDist=27.0, focal=1.42;
+ vec3 ro=vec3(0.0,camDist*sin(el),-camDist*cos(el));
+ vec3 f=normalize(-ro);
+ vec3 rgt=normalize(vec3(f.z,0.0,-f.x));
+ vec3 up=cross(f,rgt);
+ vec3 vel=normalize(uv.x*rgt+uv.y*up+focal*f);
+ vec3 pos=ro;
+ vec3 hv=cross(pos,vel); float h2=dot(hv,hv);
+ vec3 col=vec3(0.0); bool cap=false;
+ for(int i=0;i<240;i++){
+  float r=length(pos);
+  if(r<1.02){ cap=true; break; }
+  if(r>60.0) break;
+  float dt=0.26*clamp(r*0.35,0.25,4.0);
+  float r2=r*r; float r5=r2*r2*r;
+  vel=normalize(vel+(-1.5*h2/r5)*pos*dt);
+  float prevY=pos.y;
+  pos+=vel*dt;
+  if(prevY*pos.y<0.0){
+   float t=prevY/(prevY-pos.y);
+   vec2 cxz=pos.xz-vel.xz*dt*(1.0-t);
+   float rr=length(cxz);
+   if(rr>3.0 && rr<13.0){
+    float u=clamp((rr-3.0)/10.0,0.0,1.0);
+    float ang=atan(cxz.y,cxz.x);
+    float om=1.3*u_time*pow(3.0/rr,1.5)*2.2;
+    float sp=ang+om+rr*1.6;
+    float sw=fbm4(vec2(sp*2.2,rr*0.5));
+    float fine=fbm3(vec2(sp*6.5,rr*1.5));
+    float grain=fbm2o(vec2(sp*16.0,rr*4.0));
+    float dens=(0.30+0.95*sw)*(0.55+0.45*fine)*(0.75+0.35*grain);
+    dens=pow(clamp(dens,0.0,2.0),1.35);
+    float radial=pow(1.0-u,2.0)*smoothstep(0.0,0.05,u);
+    vec2 vdir=vec2(-sin(ang),cos(ang));
+    float beta=clamp(0.62*sqrt(3.0/rr),0.0,0.82);
+    float dop=pow(1.0/(1.0-beta*(-dot(vdir,vel.xz))),2.6);
+    float em=dens*radial*0.98*mix(1.0,dop,0.55);
+    float shift=clamp((dop-1.0)*0.35,-0.4,0.6);
+    col+=discColor(u)*em*vec3(1.0,1.0+shift*0.20,1.0+shift*0.55);
+   }
+  }
+ }
+ if(!cap) col+=stars(vel);
+ vec3 o=pow(aces(col),vec3(1.0/2.2));
+ float lum=dot(o,vec3(0.2126,0.7152,0.0722));
+ o=clamp(mix(vec3(lum),o,1.6),0.0,1.0);
+ gl_FragColor=vec4(o,1.0);
 }`;
   function sh(ty,src){ const s=gl.createShader(ty); gl.shaderSource(s,src); gl.compileShader(s);
-    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){ return null; } return s; }
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){ console.warn('[BH shader]',gl.getShaderInfoLog(s)); return null; } return s; }
   const v=sh(gl.VERTEX_SHADER,VS), f=sh(gl.FRAGMENT_SHADER,FS); if(!v||!f) return;
   const prog=gl.createProgram(); gl.attachShader(prog,v); gl.attachShader(prog,f); gl.linkProgram(prog);
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) return;
@@ -1687,9 +1710,11 @@ void main(){
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
   const loc=gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
   const uRes=gl.getUniformLocation(prog,'u_res'), uTime=gl.getUniformLocation(prog,'u_time');
-  const dpr=Math.min(window.devicePixelRatio||1,2);   // độ phân giải cao
-  function resize(){ let w=c.clientWidth*dpr, h=c.clientHeight*dpr; const mx=1500.0;
-    if(w>mx){ const k=mx/w; w*=k; h*=k; } w=Math.max(1,Math.floor(w)); h=Math.max(1,Math.floor(h));
+  // Raymarching 240 bước rất nặng -> render nội bộ ở độ phân giải vừa phải rồi để CSS phóng to
+  const MOBILE=Math.min(window.innerWidth,window.innerHeight)<720;
+  const MAXW=MOBILE?560:960;
+  function resize(){ let w=c.clientWidth, h=c.clientHeight;
+    const k=Math.min(1,MAXW/Math.max(w,1)); w=Math.max(1,Math.floor(w*k)); h=Math.max(1,Math.floor(h*k));
     if(c.width!==w||c.height!==h){ c.width=w; c.height=h; } gl.viewport(0,0,c.width,c.height); }
   window.addEventListener('resize',resize);
   document.querySelector('.space').classList.add('webgl');
