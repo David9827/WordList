@@ -1538,6 +1538,8 @@ function applyTheme(t){
   const t=document.getElementById('remTime'), btn=document.getElementById('remBtn'), st=document.getElementById('remStatus');
   if(!btn) return;
   const saved=localStorage.getItem('vocab_rem_time'); if(saved && t) t.value=saved;
+  if(t) t.onchange=()=>{ localStorage.setItem('vocab_rem_time', t.value||'20:00');
+    if(typeof fbReady==='function' && fbReady() && fbUser){ fbDb.collection('users').doc(fbUser.uid).set({reminderTime:t.value||'20:00'},{merge:true}); } };
   btn.onclick=()=>{
     const time=(t.value||'20:00'); localStorage.setItem('vocab_rem_time', time);
     const [hh,mm]=time.split(':'); const pad=n=>String(n).padStart(2,'0');
