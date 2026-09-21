@@ -1834,21 +1834,32 @@ vec3 discColor(float u){
  return mix(mid,cold,(u-0.35)/0.65);}
 vec3 stars(vec3 d){
  vec3 o=vec3(0.0);
- for(int k=0;k<2;k++){
-  float sc=(k==0)?95.0:170.0;
+ for(int k=0;k<3;k++){
+  float sc = (k==0)?62.0:((k==1)?118.0:225.0);
+  float th = (k==0)?0.940:((k==1)?0.952:0.962);
   vec3 p=d*sc; vec3 ic=floor(p); vec3 f=p-ic;
   float seed=hash31(ic+vec3(11.0,23.0,5.0));
-  if(seed>0.955){
+  if(seed>th){
    vec3 sp=vec3(hash31(ic),hash31(ic+vec3(31.0,7.0,13.0)),hash31(ic+vec3(3.0,41.0,57.0)));
    float dist=length(f-sp);
-   float tw=0.7+0.3*sin(u_time*1.2+seed*120.0);
-   float b=smoothstep(0.16,0.0,dist)*(0.35+0.65*(seed-0.955)/0.045)*tw;
+   float tw=0.65+0.35*sin(u_time*1.1+seed*130.0);
+   float mag=(seed-th)/(1.0-th);
+   float b=smoothstep(0.22,0.0,dist)*(0.25+0.95*mag*mag)*tw*((k==0)?1.5:1.0);
    float warm=hash31(ic+vec3(71.0,17.0,29.0));
-   o+=b*vec3(0.80+0.20*warm,0.86,1.0-0.18*warm);
+   o+=b*vec3(0.78+0.22*warm,0.86,1.0-0.2*warm);
+   if(mag>0.75){ float g=smoothstep(0.55,0.0,dist)*0.16*mag; o+=g*vec3(0.8+0.2*warm,0.85,1.0); }
   }
  }
  float t=atan(d.z,d.x)/6.2831853+0.5, pv=acos(clamp(d.y,-1.0,1.0))/3.14159265;
- o+=0.010*fbm3(vec2(t*8.0,pv*8.0))*vec3(0.45,0.5,0.95);
+ float n1=fbm4(vec2(t*5.0+11.0,pv*5.0));
+ float n2=fbm3(vec2(t*9.0-4.0, pv*9.0+7.0));
+ float n3=fbm3(vec2(t*2.4+31.0,pv*2.4));
+ float cloud=pow(clamp(n1*1.35-0.55,0.0,1.0),2.4);
+ float wisp =pow(clamp(n2*1.30-0.62,0.0,1.0),2.8);
+ float deep =pow(clamp(n3*1.30-0.58,0.0,1.0),2.2);
+ o+=0.30*vec3(cloud*0.42+wisp*0.30+deep*0.16,
+              cloud*0.16+wisp*0.10+deep*0.07,
+              cloud*0.62+wisp*0.52+deep*0.30);
  return o;}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
 void main(){
@@ -1861,9 +1872,10 @@ void main(){
  vec3 vel=normalize(uv.x*rgt+uv.y*up+focal*f);
  vec3 pos=ro;
  vec3 hv=cross(pos,vel); float h2=dot(hv,hv);
- vec3 col=vec3(0.0); bool cap=false;
+ vec3 col=vec3(0.0); bool cap=false; float minr=1e9;
  for(int i=0;i<240;i++){
   float r=length(pos);
+  if(r<minr) minr=r;
   if(r<1.02){ cap=true; break; }
   if(r>60.0) break;
   float dt=0.26*clamp(r*0.35,0.25,4.0);
@@ -1896,10 +1908,24 @@ void main(){
     float em=dens*radial*0.98*mix(1.0,dop,0.55);
     float shift=clamp((dop-1.0)*0.35,-0.4,0.6);
     col+=discColor(u)*em*vec3(1.0,1.0+shift*0.20,1.0+shift*0.55);
+    float gx=sxA*1.15, gy=rr*1.9;
+    float ix2=floor(gx), iy2=floor(gy);
+    float sd=hash21(vec2(ix2+13.0,iy2+29.0));
+    if(sd>0.855){
+     float ax=hash21(vec2(ix2+5.0,iy2+7.0)), ay=hash21(vec2(ix2+17.0,iy2+3.0));
+     float ddx=(gx-ix2)-ax, ddy=(gy-iy2)-ay;
+     float dd=sqrt(ddx*ddx+ddy*ddy);
+     float big=(sd-0.855)/0.145;
+     float spark=smoothstep(0.17+0.10*big,0.0,dd)*(0.45+0.55*big);
+     float halo =smoothstep(0.42+0.18*big,0.0,dd)*0.16*big;
+     float eA=(spark+halo)*1.3*mix(1.0,dop,0.5)*(0.35+0.65*pow(1.0-u,1.1));
+     col+=eA*vec3(1.7,1.12,0.52);
+    }
    }
   }
  }
  if(!cap) col+=stars(vel);
+ if(!cap){ float zz=(minr-3.45)/0.85; col+=exp(-zz*zz)*0.8*vec3(1.0,0.70,0.38); }
  vec3 o=pow(aces(col),vec3(1.0/2.2));
  float lum=dot(o,vec3(0.2126,0.7152,0.0722));
  o=clamp(mix(vec3(lum),o,1.6),0.0,1.0);
