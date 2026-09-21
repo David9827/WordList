@@ -1628,48 +1628,53 @@ vec3 stars(vec3 d){vec2 u=vec2(atan(d.z,d.x),acos(clamp(d.y,-1.0,1.0)));
  float s=pow(hash13(vec3(floor(u*130.0),1.0)),64.0);
  float tw=0.7+0.3*sin(u_time*0.9+hash13(vec3(floor(u*130.0),7.0))*40.0);
  return vec3(0.85,0.9,1.0)*s*tw*2.6+vec3(0.006,0.01,0.024);}
-float discNoise(vec3 pos,float distC,float distD){
- float ang=atan(-pos.x,-pos.z);
- ang += u_time*(1.7/pow(max(distC,1.0),1.5));      // xoay vi sai: trong nhanh, ngoài chậm
- vec3 rc=vec3(distC*1.5+0.5, ang*1.5, distD*1.5);
- float v=noise3(rc*vec3(0.7,1.0,1.3)+vec3(0.0,u_time*0.06,0.0));
- v+=0.5*noise3(rc*vec3(1.5,2.0,2.6)+vec3(0.0,u_time*0.1,0.0));
- return v;}
+// ===== tham số HIGH của repo =====
+const float innerR=0.8, outerR=4.4, width=0.16, maxR=5.0;
+const float gasThresh=0.132, transPow=4.0, densPow=8.22, intensity=24.51;
+const float accFalloff=7.6, accColorShift=1.31;
+const vec3 mainCol=vec3(0.0185,0.00273,0.0), innerColC=vec3(0.0666,0.00802,0.0);
+float sampleNoise(vec3 rc, float dfall){
+ float val=0.0; float tt=u_time/20.0;
+ vec3 o0=rc; o0.y+=tt*3.0;  val+=max(0.0, noise3(o0/2.0)-dfall)*transPow;   // lớp 1: scale 2, scroll 3
+ vec3 o1=rc; o1.y+=tt*10.0; val+=max(0.0, noise3(o1/0.98)-dfall)*transPow;  // lớp 2: scale 0.98, scroll 10
+ return val;}
+float pcurve(float x){ x=clamp(x,0.0,1.0); float k=3125.0/256.0; return k*pow(x,4.0)*(1.0-x); } // a=4,b=1
 void main(){
  vec2 uv=(gl_FragCoord.xy-0.5*u_res)/u_res.y;
- vec3 ro=vec3(0.0,1.7,-9.0);
- vec3 fwd=normalize(vec3(0.0,-0.15,1.0));
+ vec3 ro=vec3(0.0,1.35,-8.0);
+ vec3 fwd=normalize(vec3(0.0,-0.16,1.0));
  vec3 rgt=normalize(cross(vec3(0.0,1.0,0.0),fwd)),up=cross(fwd,rgt);
  vec3 rd=normalize(uv.x*rgt+uv.y*up+1.5*fwd);
- vec3 ctr=vec3(0.0); float Rs=1.0,maxR=14.0;
- vec3 dDir=vec3(0.0,1.0,0.0); float innerR=2.3,outerR=9.0,width=0.6;
+ vec3 ctr=vec3(0.0); float Rs=0.55; vec3 dDir=vec3(0.0,1.0,0.0);
  vec3 off=ro-ctr; float b=dot(off,rd),cc=dot(off,off)-maxR*maxR,hh=b*b-cc;
  if(hh<0.0){ gl_FragColor=vec4(stars(rd),1.0); return; }
  vec3 pos=ro+rd*max(0.0,-b-sqrt(hh)); vec3 dir=rd; vec3 gas=vec3(0.0); float hole=0.0;
- float st=0.18;
- for(int s=0;s<180;s++){
-  vec3 cd=ctr-pos; float dist=length(cd); cd/=max(dist,1e-4);
-  dir=normalize(dir+cd*(0.85/(dist*dist))*st);   // warpRay: bẻ cong theo hấp dẫn
+ float st=0.06;                                    // stepSize nhỏ (đĩa mỏng, chi tiết)
+ for(int s=0;s<300;s++){
+  vec3 cd=ctr-pos; float dist=length(cd);
+  float force=0.49/pow(max(dist,0.001),1.43);      // warpRay: gravConst/dist^attenuation
+  dir=normalize(dir + (cd/max(dist,1e-4))*force*st);
   pos+=dir*st;
   float distC=length(pos-ctr);
-  if(distC<Rs+st){ hole=1.0; break; }             // chân trời sự kiện
+  if(distC<Rs+st){ hole=1.0; break; }              // chân trời sự kiện
   if(distC>maxR) break;
   float distD=dot(dDir,pos-ctr);
   float rg=1.0-clamp((distC-innerR)/outerR,0.0,1.0);
-  float density=pow(clamp(rg,0.0,1.0),2.0)*clamp(1.0-abs(distD)/width,0.0,1.0);
+  float density=pcurve(rg)*clamp(1.0-abs(distD)/width,0.0,1.0);   // hình dạng đĩa
   if(density>0.01){
-   float dn=discNoise(pos-ctr,distC,distD);
-   float trans=max(0.0,dn-0.28);
-   float norm=clamp((maxR-distC)/maxR,0.0,1.0);
-   float fall=pow(norm,2.0), cshift=pow(norm,1.4);
-   vec3 base=mix(vec3(1.0,0.42,0.10),vec3(1.0,0.88,0.62),cshift); // cam Interstellar
-   gas+=mix(base,vec3(1.5),fall)*trans*density*st*2.3;
+   vec3 rc=vec3(distC*1.5+0.5, atan(-pos.x,-pos.z)*1.5, distD*1.5);   // cartesianToRadial
+   float dfall=mix(0.0, gasThresh, pow(distC,0.98));
+   float trans=sampleNoise(rc, dfall);
+   trans=mix(trans, intensity, clamp(pow(distC,-densPow),0.0,1.0));  // đậm dần vào tâm
+   float nd=clamp(1.0-distC/maxR,0.0,1.0);
+   float fall=pow(nd,accFalloff), cshift=pow(nd,accColorShift);
+   vec3 base=mix(mainCol, innerColC, cshift);
+   gas += mix(base, vec3(intensity), fall) * trans * st;           // trắng nóng vào tâm
   }
  }
  vec3 col = (hole>0.5)?vec3(0.0):stars(dir);        // sao bị thấu kính
- col += 1.0-exp(-gas);
- col = col/(1.0+col*0.35);
- col = pow(col,vec3(0.82));
+ col += 1.0-exp(-gas);                              // gộp đĩa khí
+ col = pow(col, vec3(0.85));
  gl_FragColor=vec4(col,1.0);
 }`;
   function sh(ty,src){ const s=gl.createShader(ty); gl.shaderSource(s,src); gl.compileShader(s);
