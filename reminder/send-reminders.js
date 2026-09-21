@@ -26,7 +26,7 @@ function peakHour(a) {
 }
 
 /* Chọn lý do nhắc, ưu tiên từ trên xuống. Trả null nếu không cần nhắc. */
-function decide(words, today) {
+function decide(words, today, d) {
   const ws = (words || []).filter(Boolean);
   if (!ws.length) return null;
 
@@ -52,14 +52,17 @@ function decide(words, today) {
              body: `${neverReviewed} từ trong kho vẫn chưa được ôn. Bắt đầu nhé!` };
   }
 
-  // Lâu rồi chưa ôn (giữ nhịp học)
-  const lasts = ws.map((w) => w.sr && w.sr.last).filter(Boolean).sort();
-  if (lasts.length) {
-    const gap = dayDiff(lasts[lasts.length - 1], today);
-    if (gap >= 3) {
-      return { key: "idle", title: "Lâu rồi chưa ôn từ 👋",
-               body: `Đã ${gap} ngày bạn chưa luyện. Ôn lại vài phút để không quên nhé!` };
-    }
+  // Lâu rồi chưa ôn (giữ nhịp học) — ưu tiên mốc luyện tập chính xác tới giờ
+  let gap = null;
+  if (d && d.lastPracticeAt) {
+    gap = Math.floor((Date.now() - d.lastPracticeAt) / 86400000);
+  } else {
+    const lasts = ws.map((w) => w.sr && w.sr.last).filter(Boolean).sort();
+    if (lasts.length) gap = dayDiff(lasts[lasts.length - 1], today);
+  }
+  if (gap !== null && gap >= 3) {
+    return { key: "idle", title: "Lâu rồi chưa ôn từ 👋",
+             body: `Đã ${gap} ngày bạn chưa luyện. Ôn lại vài phút để không quên nhé!` };
   }
   return null;
 }
@@ -75,7 +78,8 @@ function decide(words, today) {
     const d = doc.data() || {};
     const tokens = Object.keys(d.fcmTokens || {});
     const ph = peakHour(d.activityHours);
-    console.log(`  user=${doc.id} tokens=${tokens.length} gioBao=${ph}h lanCuoi=${d.lastNotified || "-"}`);
+    const fmt=t=>t?new Date(t).toLocaleString("vi-VN",{timeZone:TZ}):"-";
+    console.log(`  user=${doc.id} tokens=${tokens.length} gioBao=${ph}h | themTuCuoi=${fmt(d.lastAddAt)} | luyenCuoi=${fmt(d.lastPracticeAt)} | daBao=${d.lastNotified||"-"}`);
     if (!tokens.length) continue;
 
     // mỗi ngày tối đa 1 thông báo
@@ -84,7 +88,7 @@ function decide(words, today) {
     if (!FORCE && nowH < ph) { console.log("    -> chua toi gio hay hoc"); continue; }
 
     const words = d.words || [];
-    const reason = decide(words, today);
+    const reason = decide(words, today, d);
     console.log(`    tong tu=${words.length} lyDo=${reason ? reason.key : "khong can nhac"}`);
     if (!reason && !FORCE) continue;
 
