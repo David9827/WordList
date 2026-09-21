@@ -2,7 +2,7 @@ name: Vocab review reminder
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '23 * * * *'
   workflow_dispatch: {}
 
 jobs:
