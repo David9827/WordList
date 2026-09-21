@@ -488,7 +488,7 @@
     <h2>Ôn tập hôm nay</h2>
     <p class="hint">Ôn theo <b>FSRS-6</b> — thuật toán lập lịch hiện đại giúp nhớ lâu. Bạn <b>gõ lại</b> (xen kẽ hai chiều: từ→nghĩa và nghĩa→từ) để rèn trí nhớ chủ động; từ nào quên sẽ <b>học lại ngay trong buổi</b> và được xếp ôn lại sớm.</p>
     <details style="margin-bottom:18px">
-      <summary style="cursor:pointer;font-weight:700;color:var(--muted)"><span class="sumic" data-icon="bell" data-isize="18"></span>Nhắc ôn hằng ngày trên điện thoại (iPhone/Android)</summary>
+      <summary style="cursor:pointer;font-weight:700;color:var(--muted)"><span class="sumic" data-icon="bell" data-isize="18"></span>Nhắc bằng Lịch — cách thủ công (không cần Firebase)</summary>
       <div style="margin-top:12px;padding:16px;background:var(--bg-gray);border-radius:14px">
         <div class="row" style="align-items:end">
           <div style="flex:0 0 auto">
@@ -939,6 +939,7 @@ function saveWord(r, viNote, userEx){
     save();
     addStatus.textContent='✔ Đã lưu “'+r.term+'”. Sẵn sàng luyện tập!'; addStatus.className='status ok';
   }
+  recordActivity();
   lookupResult.innerHTML=''; addInput.value=''; addInput.focus();
 }
 function meaningText(w){ if(w.vi) return w.vi; const f=(w.meanings||[])[0]; if(f&&f.defs[0]) return f.defs[0].def; return '(chưa có nghĩa)'; }
@@ -1111,6 +1112,7 @@ function renderReviewCard(w,item,productive){
   let checked=false;
   const doCheck=()=>{
     if(checked) return; checked=true;
+    recordActivity();
     const ok = productive ? checkWord(w,inp.value) : checkMeaning(w,inp.value);
     inp.disabled=true; btn.style.display='none';
     const fb=document.getElementById('rFb');
@@ -1492,12 +1494,26 @@ async function enablePush(){
     if(!fbMessaging) fbMessaging=firebase.messaging();
     const token=await fbMessaging.getToken({ vapidKey:vapid, serviceWorkerRegistration:reg });
     if(!token){ setP('Không lấy được token thiết bị.', true); return; }
+    let localHours={}; try{ localHours=JSON.parse(localStorage.getItem('vocab_active_hours')||'{}'); }catch(_){}
     await fbDb.collection('users').doc(fbUser.uid).set({
       fcmTokens:{ [token]: true },
-      reminderTime: (localStorage.getItem('vocab_rem_time')||'20:00')
+      activityHours: localHours          // seed thói quen giờ học để function tự chọn giờ báo
     }, {merge:true});
-    setP('✔ Đã bật thông báo đẩy trên thiết bị này. Bạn sẽ nhận nhắc ôn hằng ngày.', false, true);
+    setP('✔ Đã bật thông báo đẩy. App sẽ tự báo vào ngày có từ đến hạn, đúng khung giờ bạn hay học.', false, true);
   }catch(e){ setP('Lỗi bật push: '+(e && e.message || e), true); }
+}
+/* Ghi lại giờ hoạt động (để tự chọn giờ gửi push, không cần bạn chọn tay) */
+function recordActivity(){
+  try{
+    const h=new Date().getHours();
+    let raw={}; try{ raw=JSON.parse(localStorage.getItem('vocab_active_hours')||'{}'); }catch(_){}
+    raw[h]=(raw[h]||0)+1;
+    localStorage.setItem('vocab_active_hours', JSON.stringify(raw));
+    if(typeof fbReady==='function' && fbReady() && fbUser){
+      const inc=firebase.firestore.FieldValue.increment(1);
+      fbDb.collection('users').doc(fbUser.uid).set({ activityHours:{ [String(h)]: inc } }, {merge:true});
+    }
+  }catch(e){}
 }
 (function initFbSettings(){
   const cfgIn=document.getElementById('fbConfigInput'), connectBtn=document.getElementById('fbConnectBtn'),
