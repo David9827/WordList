@@ -470,11 +470,32 @@
 
   /* ===== Thanh nav chế độ tối: đen mờ + blur kính ===== */
   :root:not([data-theme="light"]) .nav{
-    background:rgba(0,0,0,.82);
-    backdrop-filter:blur(30px) saturate(120%);
-    -webkit-backdrop-filter:blur(30px) saturate(120%);
+    background:rgba(0,0,0,.52);
+    backdrop-filter:blur(28px) saturate(130%);
+    -webkit-backdrop-filter:blur(28px) saturate(130%);
     border-bottom:1px solid rgba(255,255,255,.08);
+    position:sticky; isolation:isolate;
   }
+  /* rắc sao lấp lánh trên thanh nav */
+  :root:not([data-theme="light"]) .nav::before{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      radial-gradient(1.4px 1.4px at 6% 34%, rgba(255,255,255,.95), transparent 60%),
+      radial-gradient(1px 1px   at 14% 68%, rgba(200,220,255,.85), transparent 60%),
+      radial-gradient(1.2px 1.2px at 23% 22%, rgba(255,255,255,.8), transparent 60%),
+      radial-gradient(1px 1px   at 31% 76%, rgba(255,240,220,.8), transparent 60%),
+      radial-gradient(1.5px 1.5px at 41% 40%, rgba(255,255,255,.9), transparent 60%),
+      radial-gradient(1px 1px   at 52% 18%, rgba(200,220,255,.75), transparent 60%),
+      radial-gradient(1.2px 1.2px at 59% 72%, rgba(255,255,255,.85), transparent 60%),
+      radial-gradient(1px 1px   at 68% 30%, rgba(255,235,210,.8), transparent 60%),
+      radial-gradient(1.4px 1.4px at 77% 62%, rgba(255,255,255,.9), transparent 60%),
+      radial-gradient(1px 1px   at 86% 26%, rgba(200,220,255,.8), transparent 60%),
+      radial-gradient(1.2px 1.2px at 93% 58%, rgba(255,255,255,.85), transparent 60%),
+      radial-gradient(1px 1px   at 97% 80%, rgba(255,240,220,.75), transparent 60%);
+    animation:navTwinkle 4.5s ease-in-out infinite alternate;
+  }
+  :root:not([data-theme="light"]) .nav-inner{position:relative; z-index:1}
+  @keyframes navTwinkle{ from{opacity:.45} to{opacity:.9} }
 </style>
 </head>
 <body>
