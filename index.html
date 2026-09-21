@@ -432,6 +432,41 @@
     background:transparent!important;border:none!important;box-shadow:none!important;
     backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
   }
+
+  /* ===== Nút & thành phần tương tác ở chế độ tối: cùng phong cách kính Spotlight ===== */
+  :root:not([data-theme="light"]) button.btn.ghost,
+  :root:not([data-theme="light"]) button.iconbtn,
+  :root:not([data-theme="light"]) .opt{
+    background:rgba(28,31,48,.55);
+    border:1px solid var(--line);
+    color:var(--text);
+    backdrop-filter:blur(18px) saturate(160%);
+    -webkit-backdrop-filter:blur(18px) saturate(160%);
+  }
+  :root:not([data-theme="light"]) button.btn.ghost:hover,
+  :root:not([data-theme="light"]) button.iconbtn:hover,
+  :root:not([data-theme="light"]) .opt:hover{
+    background:rgba(34,38,58,.72);
+    border-color:var(--blue);
+  }
+  :root:not([data-theme="light"]) button.btn.ghost:focus-visible,
+  :root:not([data-theme="light"]) button.iconbtn:focus-visible,
+  :root:not([data-theme="light"]) .opt:focus-visible{
+    border-color:var(--blue); box-shadow:0 0 0 4px rgba(106,168,255,.18); outline:none;
+  }
+  :root:not([data-theme="light"]) .opt.correct{background:rgba(74,222,128,.18);border-color:var(--green-solid);color:var(--green)}
+  :root:not([data-theme="light"]) .opt.wrong{background:rgba(255,107,107,.18);border-color:#ff6b6b;color:var(--red)}
+  :root:not([data-theme="light"]) .chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:var(--muted)}
+  :root:not([data-theme="light"]) .chip.due{background:rgba(255,107,107,.16);border-color:transparent;color:var(--red)}
+  :root:not([data-theme="light"]) .chip.new{background:rgba(106,168,255,.18);border-color:transparent;color:var(--blue)}
+  :root:not([data-theme="light"]) .wl-item{background:rgba(28,31,48,.5);border:1px solid var(--line)}
+  :root:not([data-theme="light"]) .wl-item:hover{background:rgba(34,38,58,.68)}
+  :root:not([data-theme="light"]) .tab.active{background:#eef1ff;color:#0b0d16}
+  :root:not([data-theme="light"]) .step-pill{background:rgba(28,31,48,.55);border:1px solid var(--line);color:var(--muted)}
+  :root:not([data-theme="light"]) .step-pill.active{background:#eef1ff;color:#0b0d16;border-color:transparent}
+  :root:not([data-theme="light"]) .step-pill.done{background:rgba(74,222,128,.18);color:var(--green);border-color:transparent}
+  :root:not([data-theme="light"]) .sched-tile,
+  :root:not([data-theme="light"]) .stat{background:rgba(28,31,48,.5);border:1px solid var(--line)}
 </style>
 </head>
 <body>
