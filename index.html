@@ -500,6 +500,7 @@
           <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <button class="btn small" id="fcmEnableBtn">Bật thông báo đẩy trên thiết bị này</button>
             <button class="btn ghost small" id="fcmDiagBtn">Kiểm tra trạng thái</button>
+            <button class="btn ghost small" id="fcmTestBtn">Gửi thông báo thử</button>
           </div>
           <pre id="fcmDiag" class="sub" style="white-space:pre-wrap;margin-top:10px;font-family:ui-monospace,monospace;font-size:.82rem;line-height:1.7"></pre>
           <div id="fcmStatus" class="status" style="margin-top:6px"></div>
@@ -1549,6 +1550,25 @@ async function enablePush(){
     setP('✔ Đã bật thông báo đẩy. App sẽ tự báo vào ngày có từ đến hạn, đúng khung giờ bạn hay học.', false, true);
   }catch(e){ setP('Lỗi bật push: '+(e && e.message || e), true); }
 }
+/* Gửi 1 thông báo cục bộ để kiểm tra đường hiển thị (không cần FCM) */
+async function testLocalNotify(){
+  const el=document.getElementById('fcmDiag');
+  const say=m=>{ if(el) el.textContent=m; };
+  try{
+    if(!('Notification' in window)){ say('❌ Trình duyệt không hỗ trợ Notification'); return; }
+    let perm=Notification.permission;
+    if(perm!=='granted') perm=await Notification.requestPermission();
+    if(perm!=='granted'){ say('❌ Chưa được cấp quyền thông báo (hiện: '+perm+')'); return; }
+    const reg=await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    await navigator.serviceWorker.ready;
+    const dueN=dueWords().length;
+    await reg.showNotification('Ôn từ vựng 📚', {
+      body: dueN>0 ? ('Bạn có '+dueN+' từ đến hạn ôn hôm nay!') : 'Thông báo thử — đường hiển thị hoạt động tốt.',
+      tag:'vocab-test'
+    });
+    say('✅ Đã gửi thông báo thử. Nếu bạn thấy nó hiện ra → phần hiển thị OK,\n   chỉ còn thiếu FCM token để nhận từ xa.');
+  }catch(e){ say('❌ Lỗi gửi thử: '+(e&&e.message||e)); }
+}
 /* Chẩn đoán vì sao chưa nhận được thông báo đẩy */
 async function diagPush(){
   const el=document.getElementById('fcmDiag'); if(!el) return;
@@ -1633,6 +1653,7 @@ function recordActivity(){
   const vIn=document.getElementById('fcmVapid'); if(vIn) vIn.value=localStorage.getItem('vocab_fcm_vapid')||'';
   const fcmBtn=document.getElementById('fcmEnableBtn'); if(fcmBtn) fcmBtn.onclick=enablePush;
   const dgBtn=document.getElementById('fcmDiagBtn'); if(dgBtn) dgBtn.onclick=diagPush;
+  const tsBtn=document.getElementById('fcmTestBtn'); if(tsBtn) tsBtn.onclick=testLocalNotify;
   if(fbConfig()) initFirebase();
   updateFbUI();
 })();
