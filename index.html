@@ -1459,7 +1459,7 @@ function initFirebase(){
     if(!fbApp){
       fbApp=firebase.initializeApp(cfg);
       fbAuth=firebase.auth(); fbDb=firebase.firestore();
-      fbAuth.onAuthStateChanged(u=>{ fbUser=u; updateFbUI(); if(u) pullFromCloud(); });
+      fbAuth.onAuthStateChanged(u=>{ fbUser=u; updateFbUI(); if(u){ pullFromCloud(); refreshPushToken(); } });
     }
     return true;
   }catch(e){ setFbStatus('Lỗi cấu hình Firebase: '+(e.message||e), true); fbApp=null; return false; }
@@ -1500,7 +1500,7 @@ async function pullFromCloud(){
 }
 function pushToCloud(){
   if(!fbReady() || !fbUser) return;
-  fbDb.collection('users').doc(fbUser.uid).set({ words, updatedAt: Date.now() })
+  fbDb.collection('users').doc(fbUser.uid).set({ words, updatedAt: Date.now() }, {merge:true})
     .then(()=>setFbStatus('✔ Đã lưu lên đám mây ('+words.length+' từ)', false, true))
     .catch(e=>setFbStatus('Lỗi lưu đám mây: '+(e.message||e), true));
 }
@@ -1508,6 +1508,21 @@ function scheduleCloudPush(){ if(!fbReady() || !fbUser) return; clearTimeout(fbP
 
 /* ===== Thông báo đẩy (FCM) ===== */
 let fbMessaging=null;
+/* Đăng ký lại token âm thầm mỗi lần mở app (nếu đã từng bật) */
+async function refreshPushToken(){
+  try{
+    const vapid=localStorage.getItem('vocab_fcm_vapid');
+    if(!vapid || !fbReady() || !fbUser) return;
+    if(!('Notification' in window) || Notification.permission!=='granted') return;
+    if(typeof firebase==='undefined' || !firebase.messaging) return;
+    const reg=await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    if(!fbMessaging) fbMessaging=firebase.messaging();
+    const token=await fbMessaging.getToken({ vapidKey:vapid, serviceWorkerRegistration:reg });
+    if(!token) return;
+    let hrs={}; try{ hrs=JSON.parse(localStorage.getItem('vocab_active_hours')||'{}'); }catch(_){}
+    await fbDb.collection('users').doc(fbUser.uid).set({ fcmTokens:{ [token]: true }, activityHours:hrs }, {merge:true});
+  }catch(e){}
+}
 async function enablePush(){
   const st=document.getElementById('fcmStatus'), setP=(m,e,o)=>{ if(st){ st.textContent=m; st.className='status'+(e?' err':(o?' ok':'')); } };
   if(!fbReady() || !fbUser){ setP('Hãy Kết nối Firebase + Đăng nhập Google trước.', true); return; }
