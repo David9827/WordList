@@ -56,6 +56,9 @@
   /* ===== Black Hole background ===== */
   .space{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;perspective:1100px;
     background:radial-gradient(130% 120% at 50% 42%, #0c1226 0%, #060814 42%, #020206 100%)}
+  #bhCanvas{position:absolute;inset:0;width:100%;height:100%;display:none}
+  .space.webgl #bhCanvas{display:block}
+  .space.webgl .stars,.space.webgl .bh{display:none}
   .stars{position:absolute;inset:-10%;opacity:.55;
     background-image:
       radial-gradient(1px 1px at 25px 35px,#fff,transparent),
@@ -412,6 +415,7 @@
 </div>
 
 <div class="space" aria-hidden="true">
+  <canvas id="bhCanvas"></canvas>
   <div class="stars"></div>
   <div class="bh">
     <div class="disk"></div>
@@ -1604,6 +1608,76 @@ function applyTheme(t){
     document.body.appendChild(a); a.click(); a.remove();
     if(st){ st.textContent='✔ Đã tạo lời nhắc '+time+' hằng ngày. Mở file rồi chọn “Add All” để thêm vào Lịch.'; st.className='status ok'; }
   };
+})();
+
+/* ===== Hố đen WebGL raymarching (kiểu Bruno Simon) — fallback CSS ===== */
+(function initBlackHoleGL(){
+  const c=document.getElementById('bhCanvas'); if(!c) return;
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let gl=null; try{ gl=c.getContext('webgl')||c.getContext('experimental-webgl'); }catch(e){}
+  if(!gl) return;
+  const VS='attribute vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}';
+  const FS=[
+  'precision highp float;',
+  'uniform vec2 u_res; uniform float u_time;',
+  'float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}',
+  'float noise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash(i),b=hash(i+vec2(1.0,0.0)),c=hash(i+vec2(0.0,1.0)),d=hash(i+vec2(1.0,1.0));vec2 u=f*f*(3.0-2.0*f);return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}',
+  'float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise(p);p*=2.03;a*=0.5;}return v;}',
+  'vec3 starfield(vec3 d){vec2 p=vec2(atan(d.z,d.x)*1.5,asin(clamp(d.y,-1.0,1.0))*1.5);float s=pow(hash(floor(p*70.0)),55.0);float tw=0.6+0.4*sin(u_time*1.5+hash(floor(p*70.0))*30.0);return vec3(0.8,0.85,1.0)*s*tw*2.2+vec3(0.015,0.022,0.05);}',
+  'void main(){',
+  '  vec2 uv=(gl_FragCoord.xy-0.5*u_res)/u_res.y;',
+  '  vec3 ro=vec3(0.0,0.5,-3.2);',
+  '  vec3 f=normalize(-ro), rgt=normalize(cross(vec3(0.0,1.0,0.0),f)), up=cross(f,rgt);',
+  '  vec3 rd=normalize(uv.x*rgt+uv.y*up+1.7*f);',
+  '  vec3 pos=ro, vel=rd; float prevY=pos.y; vec3 col=vec3(0.0); float hit=0.0;',
+  '  for(int i=0;i<120;i++){',
+  '    float r2=dot(pos,pos); float r=sqrt(r2);',
+  '    vel=normalize(vel-pos*(0.028/(r2*r+0.0001)));',
+  '    pos+=vel*0.17;',
+  '    if(r<0.46){ hit=1.0; break; }',
+  '    if(prevY*pos.y<0.0){',
+  '      float rr=length(pos.xz);',
+  '      if(rr>0.62 && rr<2.7){',
+  '        float ang=atan(pos.z,pos.x);',
+  '        float n=fbm(vec2(ang*2.0+rr*3.0-u_time*0.6, rr*2.0+u_time*0.15));',
+  '        float fall=smoothstep(2.7,0.62,rr)*smoothstep(0.62,0.98,rr);',
+  '        vec3 dc=mix(vec3(1.0,0.96,0.86),vec3(1.0,0.5,0.16),smoothstep(0.62,1.8,rr));',
+  '        dc=mix(dc,vec3(0.5,0.72,1.0),smoothstep(1.6,2.7,rr)*0.5);',
+  '        float dopp=0.55+0.9*smoothstep(-1.0,1.0,sin(ang));',
+  '        col+=dc*(0.25+0.9*n)*fall*dopp*0.75;',
+  '      }',
+  '    }',
+  '    prevY=pos.y;',
+  '    if(r>7.0) break;',
+  '  }',
+  '  if(hit<0.5){ col+=starfield(vel)*clamp(1.0-dot(col,vec3(0.5)),0.0,1.0); }',
+  '  col=1.0-exp(-col*1.25); col=pow(col,vec3(0.9));',
+  '  gl_FragColor=vec4(col,1.0);',
+  '}'].join('\n');
+  function sh(ty,src){ const s=gl.createShader(ty); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){ return null; } return s; }
+  const v=sh(gl.VERTEX_SHADER,VS), f=sh(gl.FRAGMENT_SHADER,FS); if(!v||!f) return;
+  const prog=gl.createProgram(); gl.attachShader(prog,v); gl.attachShader(prog,f); gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) return;
+  gl.useProgram(prog);
+  const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const uRes=gl.getUniformLocation(prog,'u_res'), uTime=gl.getUniformLocation(prog,'u_time');
+  const RS=(window.innerWidth<700)?0.5:0.7;   // giảm phân giải cho đỡ nặng
+  function resize(){ const w=Math.max(1,Math.floor(c.clientWidth*RS)), h=Math.max(1,Math.floor(c.clientHeight*RS));
+    if(c.width!==w||c.height!==h){ c.width=w; c.height=h; } gl.viewport(0,0,c.width,c.height); }
+  window.addEventListener('resize',resize);
+  document.querySelector('.space').classList.add('webgl');
+  const start=Date.now();
+  function frame(){
+    if(!document.hidden && document.documentElement.getAttribute('data-theme')!=='light'){
+      resize(); gl.uniform2f(uRes,c.width,c.height); gl.uniform1f(uTime,(Date.now()-start)/1000);
+      gl.drawArrays(gl.TRIANGLES,0,3);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 })();
 
 renderIcons(); refreshBadges(); addInput.focus();
