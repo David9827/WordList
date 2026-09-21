@@ -499,7 +499,9 @@
           <input type="text" id="fcmVapid" placeholder="Web Push certificate — Key pair (public)">
           <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <button class="btn small" id="fcmEnableBtn">Bật thông báo đẩy trên thiết bị này</button>
+            <button class="btn ghost small" id="fcmDiagBtn">Kiểm tra trạng thái</button>
           </div>
+          <pre id="fcmDiag" class="sub" style="white-space:pre-wrap;margin-top:10px;font-family:ui-monospace,monospace;font-size:.82rem;line-height:1.7"></pre>
           <div id="fcmStatus" class="status" style="margin-top:6px"></div>
           <div class="sub" style="margin-top:8px;line-height:1.6">Lấy VAPID: Firebase → <b>Project settings → Cloud Messaging → Web configuration → Generate key pair</b>. <b>iPhone:</b> phải <b>Thêm vào Màn hình chính</b> rồi mở app từ icon đó thì mới nhận được push (yêu cầu của iOS).</div>
         </div>
@@ -1547,6 +1549,60 @@ async function enablePush(){
     setP('✔ Đã bật thông báo đẩy. App sẽ tự báo vào ngày có từ đến hạn, đúng khung giờ bạn hay học.', false, true);
   }catch(e){ setP('Lỗi bật push: '+(e && e.message || e), true); }
 }
+/* Chẩn đoán vì sao chưa nhận được thông báo đẩy */
+async function diagPush(){
+  const el=document.getElementById('fcmDiag'); if(!el) return;
+  const L=[]; const ok=v=>v?'✅':'❌';
+  const standalone = (window.navigator.standalone===true) || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);
+  const iOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  el.textContent='Đang kiểm tra…';
+  L.push(ok(!iOS||standalone)+' Mở từ Màn hình chính: '+(standalone?'CÓ':(iOS?'CHƯA — iPhone bắt buộc phải mở từ icon':'không cần')));
+  L.push(ok('Notification' in window)+' Trình duyệt hỗ trợ Notification');
+  L.push(ok('serviceWorker' in navigator)+' Hỗ trợ Service Worker');
+  L.push(ok(('Notification' in window)&&Notification.permission==='granted')+' Quyền thông báo: '+(('Notification' in window)?Notification.permission:'không có'));
+  L.push(ok(!!localStorage.getItem('vocab_fcm_vapid'))+' Đã lưu VAPID key');
+  L.push(ok(fbReady())+' Firebase đã kết nối');
+  L.push(ok(!!fbUser)+' Đã đăng nhập Google'+(fbUser?(' ('+(fbUser.email||'')+')'):''));
+  try{
+    if(typeof firebase!=='undefined' && firebase.messaging && firebase.messaging.isSupported){
+      const sup=await firebase.messaging.isSupported();
+      L.push(ok(sup)+' Firebase Messaging khả dụng');
+    }
+  }catch(e){ L.push('❌ Firebase Messaging lỗi: '+(e.message||e)); }
+  try{
+    const regs=await navigator.serviceWorker.getRegistrations();
+    L.push(ok(regs.length>0)+' Service Worker đã đăng ký ('+regs.length+')');
+  }catch(e){ L.push('❌ Service Worker: '+(e.message||e)); }
+  // thử lấy token
+  let token=null;
+  try{
+    const vapid=localStorage.getItem('vocab_fcm_vapid');
+    if(vapid && fbReady() && fbUser && ('Notification' in window) && Notification.permission==='granted'){
+      const reg=await navigator.serviceWorker.register('firebase-messaging-sw.js');
+      if(!fbMessaging) fbMessaging=firebase.messaging();
+      token=await fbMessaging.getToken({vapidKey:vapid, serviceWorkerRegistration:reg});
+    }
+    L.push(ok(!!token)+' Lấy được FCM token'+(token?(': '+token.slice(0,18)+'…'):''));
+  }catch(e){ L.push('❌ Lấy token lỗi: '+(e&&e.message||e)); }
+  // kiểm tra token đã lưu trên Firestore chưa
+  try{
+    if(fbReady()&&fbUser){
+      const d=await fbDb.collection('users').doc(fbUser.uid).get();
+      const data=d.exists?(d.data()||{}):{};
+      const n=Object.keys(data.fcmTokens||{}).length;
+      const hrs=Object.keys(data.activityHours||{}).length;
+      const dueN=(data.words||[]).filter(w=>w&&w.sr&&w.sr.due&&w.sr.due<=todayStr()).length;
+      L.push(ok(n>0)+' Token lưu trên đám mây: '+n);
+      L.push(ok(hrs>0)+' Dữ liệu giờ học: '+hrs+' khung giờ');
+      L.push(ok(true)+' Từ trên đám mây: '+((data.words||[]).length)+' · đến hạn hôm nay: '+dueN);
+      if(token && !(data.fcmTokens||{})[token]){
+        await fbDb.collection('users').doc(fbUser.uid).set({fcmTokens:{[token]:true}},{merge:true});
+        L.push('🔧 Đã tự lưu token vừa lấy lên đám mây');
+      }
+    }
+  }catch(e){ L.push('❌ Đọc Firestore lỗi: '+(e&&e.message||e)); }
+  el.textContent=L.join('\n');
+}
 /* Ghi lại giờ hoạt động (để tự chọn giờ gửi push, không cần bạn chọn tay) */
 function recordActivity(){
   try{
@@ -1576,6 +1632,7 @@ function recordActivity(){
   syncBtn.onclick=()=>{ if(fbUser) pullFromCloud(); };
   const vIn=document.getElementById('fcmVapid'); if(vIn) vIn.value=localStorage.getItem('vocab_fcm_vapid')||'';
   const fcmBtn=document.getElementById('fcmEnableBtn'); if(fcmBtn) fcmBtn.onclick=enablePush;
+  const dgBtn=document.getElementById('fcmDiagBtn'); if(dgBtn) dgBtn.onclick=diagPush;
   if(fbConfig()) initFirebase();
   updateFbUI();
 })();
