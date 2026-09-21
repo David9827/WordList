@@ -1,5 +1,6 @@
-/* Gửi thông báo nhắc ôn (FCM) — chạy bởi GitHub Actions, MIỄN PHÍ (không cần Blaze).
-   Đọc Firestore, với mỗi user: nếu đúng khung giờ họ hay học và có từ due<=hôm nay thì gửi. */
+/* Nhắc ôn chủ động — chạy bởi GitHub Actions (miễn phí).
+   Quyết định dựa trên: lịch FSRS (sr.due), thời điểm THÊM từ (createdAt),
+   và lần ÔN gần nhất (sr.last). Mỗi ngày tối đa 1 thông báo. */
 const admin = require("firebase-admin");
 
 const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -8,47 +9,93 @@ const db = admin.firestore();
 
 const TZ = "Asia/Ho_Chi_Minh";
 const APP_URL = "https://david9827.github.io/WordList/";
-const todayStr = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
 const FORCE = process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || process.env.FORCE === "1";
+
+const dstr = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ });
+const todayStr = () => dstr(new Date());
 const hourNow = () =>
   parseInt(new Date().toLocaleString("en-US", { timeZone: TZ, hour: "2-digit", hour12: false }), 10);
+const dayDiff = (a, b) =>
+  Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
 
+// Giờ nhắc = khung giờ user hay học nhất (app tự học); mặc định 20h
 function peakHour(a) {
   let best = -1, bestC = -1;
   for (const k in (a || {})) { if (a[k] > bestC) { bestC = a[k]; best = parseInt(k, 10); } }
-  return best >= 0 ? best : 20; // mặc định 20h nếu chưa có dữ liệu thói quen
+  return best >= 0 ? best : 20;
+}
+
+/* Chọn lý do nhắc, ưu tiên từ trên xuống. Trả null nếu không cần nhắc. */
+function decide(words, today) {
+  const ws = (words || []).filter(Boolean);
+  if (!ws.length) return null;
+
+  const due = ws.filter((w) => w.sr && w.sr.due && w.sr.due <= today).length;
+  if (due > 0) {
+    return { key: "due", title: "Đến giờ ôn từ 📚",
+             body: `Bạn có ${due} từ đến hạn ôn hôm nay — ôn ngay để nhớ lâu!` };
+  }
+
+  // Từ thêm hôm nay mà chưa ôn lần nào (ôn lần đầu trong ngày giúp nhớ tốt hơn nhiều)
+  const addedTodayNew = ws.filter(
+    (w) => w.createdAt && dstr(new Date(w.createdAt)) === today && !(w.sr && w.sr.last)
+  ).length;
+  if (addedTodayNew > 0) {
+    return { key: "new-today", title: "Từ mới chờ bạn ✨",
+             body: `Bạn vừa thêm ${addedTodayNew} từ mới. Ôn lần đầu ngay hôm nay để ghi nhớ sâu hơn.` };
+  }
+
+  // Từ đã thêm từ hôm trước nhưng chưa ôn lần nào
+  const neverReviewed = ws.filter((w) => w.sr && !w.sr.last).length;
+  if (neverReviewed > 0) {
+    return { key: "never", title: "Có từ chưa ôn lần nào 📖",
+             body: `${neverReviewed} từ trong kho vẫn chưa được ôn. Bắt đầu nhé!` };
+  }
+
+  // Lâu rồi chưa ôn (giữ nhịp học)
+  const lasts = ws.map((w) => w.sr && w.sr.last).filter(Boolean).sort();
+  if (lasts.length) {
+    const gap = dayDiff(lasts[lasts.length - 1], today);
+    if (gap >= 3) {
+      return { key: "idle", title: "Lâu rồi chưa ôn từ 👋",
+               body: `Đã ${gap} ngày bạn chưa luyện. Ôn lại vài phút để không quên nhé!` };
+    }
+  }
+  return null;
 }
 
 (async () => {
   const today = todayStr();
   const nowH = hourNow();
-  const stamp = `${today}T${nowH}`;
   const snap = await db.collection("users").get();
   let sent = 0;
-  console.log(`Mode: ${FORCE ? "TEST (ep gui)" : "theo lich"} | today=${today} hour=${nowH} | users=${snap.size}`);
+  console.log(`Mode=${FORCE ? "TEST (ep gui)" : "theo lich"} | ${today} ${nowH}h | users=${snap.size}`);
 
   for (const doc of snap.docs) {
     const d = doc.data() || {};
     const tokens = Object.keys(d.fcmTokens || {});
-    console.log(`  user=${doc.id} tokens=${tokens.length} gioBao=${peakHour(d.activityHours)}h`);
+    const ph = peakHour(d.activityHours);
+    console.log(`  user=${doc.id} tokens=${tokens.length} gioBao=${ph}h lanCuoi=${d.lastNotified || "-"}`);
     if (!tokens.length) continue;
-    if (!FORCE && peakHour(d.activityHours) !== nowH) continue;  // chưa tới giờ user hay học
-    if (!FORCE && d.lastNotified === stamp) continue;            // đã gửi trong giờ này rồi
+
+    // mỗi ngày tối đa 1 thông báo
+    if (!FORCE && d.lastNotified === today) { console.log("    -> hom nay da gui roi"); continue; }
+    // tới hoặc qua giờ hay học thì gửi (chịu được việc cron GitHub chạy trễ)
+    if (!FORCE && nowH < ph) { console.log("    -> chua toi gio hay hoc"); continue; }
 
     const words = d.words || [];
-    const due = words.filter((w) => w && w.sr && w.sr.due && w.sr.due <= today).length;
-    console.log(`    tong tu=${words.length} den han=${due}`);
-    if (!FORCE && due <= 0) continue;                     // không có từ đến hạn → im lặng
+    const reason = decide(words, today);
+    console.log(`    tong tu=${words.length} lyDo=${reason ? reason.key : "khong can nhac"}`);
+    if (!reason && !FORCE) continue;
 
+    const msg = reason || { title: "Ôn từ vựng 📚", body: "Thông báo thử — hệ thống nhắc ôn hoạt động tốt." };
     const res = await admin.messaging().sendEachForMulticast({
       tokens,
-      notification: { title: "Ôn từ vựng 📚", body: due > 0
-        ? `Bạn có ${due} từ đến hạn ôn hôm nay!`
-        : "Thông báo thử — hệ thống nhắc ôn hoạt động tốt." },
+      notification: { title: msg.title, body: msg.body },
       webpush: { fcmOptions: { link: APP_URL } },
     });
 
-    const update = { lastNotified: stamp };
+    const update = { lastNotified: today };
     res.responses.forEach((r, i) => {
       const code = r.success ? null : (r.error && r.error.code);
       if (code === "messaging/registration-token-not-registered" ||
@@ -58,9 +105,9 @@ function peakHour(a) {
     });
     await doc.ref.update(update);
     sent++;
-    console.log(`    -> da gui: thanh cong=${res.successCount} that bai=${res.failureCount}`);
+    console.log(`    -> da gui "${msg.title}" | thanh cong=${res.successCount} that bai=${res.failureCount}`);
     res.responses.forEach((r, i) => { if (!r.success) console.log(`       loi[${i}]: ${r.error && r.error.code}`); });
   }
-  console.log(`Done. today=${today} hour=${nowH} sent=${sent}`);
+  console.log(`Done. sent=${sent}`);
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
