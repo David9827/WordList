@@ -1636,7 +1636,21 @@ function schedulePersist(){ clearTimeout(persistTimer); persistTimer=setTimeout(
 function applyRemote(cloud){
   const key=arr=>JSON.stringify(arr.map(w=>[wordKey(w), w.updatedAt||0]).sort());
   const before=key(words);
-  words=mergeWords(words, cloud||[]);
+  cloud=cloud||[];
+  /* Database là nguồn chính: bắt đầu từ bản trên cloud, chỉ giữ lại bản cục bộ
+     nếu nó MỚI HƠN (đang chờ ghi) hoặc là từ vừa tạo chưa kịp lên cloud.
+     Nhờ vậy XOÁ ở thiết bị khác cũng được áp dụng đúng. */
+  const cloudMap={}; cloud.forEach(w=>{ if(w.id) cloudMap[w.id]=w; });
+  const localMap={}; words.forEach(w=>{ if(w.id) localMap[w.id]=w; });
+  const merged=[];
+  cloud.forEach(cw=>{
+    const lw=localMap[cw.id];
+    merged.push((lw && (lw.updatedAt||0) > (cw.updatedAt||0)) ? lw : cw);
+  });
+  words.forEach(lw=>{
+    if(lw.id && !cloudMap[lw.id] && !savedSnap[lw.id]) merged.push(lw);   // từ mới tạo, chưa lên cloud
+  });
+  words=merged;
   savedSnap={}; words.forEach(w=>{ if(w.id) savedSnap[w.id]=JSON.stringify(w); });
   if(key(words)===before) return false;
   refreshBadges();
