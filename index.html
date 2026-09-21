@@ -480,22 +480,33 @@
   :root:not([data-theme="light"]) .nav::before{
     content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
     background-image:
-      radial-gradient(1.4px 1.4px at 6% 34%, rgba(255,255,255,.95), transparent 60%),
-      radial-gradient(1px 1px   at 14% 68%, rgba(200,220,255,.85), transparent 60%),
-      radial-gradient(1.2px 1.2px at 23% 22%, rgba(255,255,255,.8), transparent 60%),
-      radial-gradient(1px 1px   at 31% 76%, rgba(255,240,220,.8), transparent 60%),
-      radial-gradient(1.5px 1.5px at 41% 40%, rgba(255,255,255,.9), transparent 60%),
-      radial-gradient(1px 1px   at 52% 18%, rgba(200,220,255,.75), transparent 60%),
-      radial-gradient(1.2px 1.2px at 59% 72%, rgba(255,255,255,.85), transparent 60%),
-      radial-gradient(1px 1px   at 68% 30%, rgba(255,235,210,.8), transparent 60%),
-      radial-gradient(1.4px 1.4px at 77% 62%, rgba(255,255,255,.9), transparent 60%),
-      radial-gradient(1px 1px   at 86% 26%, rgba(200,220,255,.8), transparent 60%),
-      radial-gradient(1.2px 1.2px at 93% 58%, rgba(255,255,255,.85), transparent 60%),
-      radial-gradient(1px 1px   at 97% 80%, rgba(255,240,220,.75), transparent 60%);
-    animation:navTwinkle 4.5s ease-in-out infinite alternate;
+      radial-gradient(2.6px 2.6px at 6% 34%,  #fff, rgba(255,255,255,.35) 40%, transparent 72%),
+      radial-gradient(2.0px 2.0px at 14% 68%, #dce8ff, rgba(220,232,255,.3) 40%, transparent 72%),
+      radial-gradient(2.4px 2.4px at 23% 22%, #fff, rgba(255,255,255,.3) 40%, transparent 72%),
+      radial-gradient(2.0px 2.0px at 31% 76%, #ffe9cf, rgba(255,233,207,.3) 40%, transparent 72%),
+      radial-gradient(3.0px 3.0px at 41% 40%, #fff, rgba(255,255,255,.4) 40%, transparent 74%),
+      radial-gradient(2.0px 2.0px at 52% 18%, #dce8ff, rgba(220,232,255,.3) 40%, transparent 72%),
+      radial-gradient(2.4px 2.4px at 59% 72%, #fff, rgba(255,255,255,.3) 40%, transparent 72%),
+      radial-gradient(2.0px 2.0px at 68% 30%, #ffe4c4, rgba(255,228,196,.3) 40%, transparent 72%),
+      radial-gradient(2.8px 2.8px at 77% 62%, #fff, rgba(255,255,255,.38) 40%, transparent 74%),
+      radial-gradient(2.0px 2.0px at 86% 26%, #dce8ff, rgba(220,232,255,.3) 40%, transparent 72%),
+      radial-gradient(2.4px 2.4px at 93% 58%, #fff, rgba(255,255,255,.3) 40%, transparent 72%),
+      radial-gradient(2.0px 2.0px at 97% 80%, #ffe9cf, rgba(255,233,207,.3) 40%, transparent 72%);
+    filter:drop-shadow(0 0 3px rgba(255,255,255,.75));
+    animation:navTwinkle 3.6s ease-in-out infinite alternate;
+  }
+  /* quầng sáng mờ quanh vài ngôi sao cho nổi hơn */
+  :root:not([data-theme="light"]) .nav::after{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      radial-gradient(9px 9px at 41% 40%, rgba(255,255,255,.16), transparent 70%),
+      radial-gradient(8px 8px at 77% 62%, rgba(255,255,255,.14), transparent 70%),
+      radial-gradient(7px 7px at 6% 34%,  rgba(255,255,255,.12), transparent 70%),
+      radial-gradient(7px 7px at 93% 58%, rgba(255,255,255,.12), transparent 70%);
+    animation:navTwinkle 5.2s ease-in-out infinite alternate-reverse;
   }
   :root:not([data-theme="light"]) .nav-inner{position:relative; z-index:1}
-  @keyframes navTwinkle{ from{opacity:.45} to{opacity:.9} }
+  @keyframes navTwinkle{ from{opacity:.7} to{opacity:1} } to{opacity:.9} }
 </style>
 </head>
 <body>
