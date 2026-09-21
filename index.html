@@ -467,6 +467,14 @@
   :root:not([data-theme="light"]) .step-pill.done{background:rgba(74,222,128,.18);color:var(--green);border-color:transparent}
   :root:not([data-theme="light"]) .sched-tile,
   :root:not([data-theme="light"]) .stat{background:rgba(28,31,48,.5);border:1px solid var(--line)}
+
+  /* ===== Thanh nav chế độ tối: đen mờ + blur kính ===== */
+  :root:not([data-theme="light"]) .nav{
+    background:rgba(0,0,0,.6);
+    backdrop-filter:blur(26px) saturate(150%);
+    -webkit-backdrop-filter:blur(26px) saturate(150%);
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
 </style>
 </head>
 <body>
