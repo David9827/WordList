@@ -87,7 +87,13 @@ function decide(words, today, d) {
     // tới hoặc qua giờ hay học thì gửi (chịu được việc cron GitHub chạy trễ)
     if (!FORCE && nowH < ph) { console.log("    -> chua toi gio hay hoc"); continue; }
 
-    const words = d.words || [];
+    // Từ vựng nằm ở subcollection users/{uid}/words
+    let words = [];
+    try{
+      const ws = await doc.ref.collection("words").get();
+      ws.forEach((x) => words.push(x.data()));
+    }catch(e){ console.log("    loi doc subcollection:", e.message); }
+    if (!words.length && Array.isArray(d.words)) words = d.words;   // dữ liệu cũ
     const reason = decide(words, today, d);
     console.log(`    tong tu=${words.length} lyDo=${reason ? reason.key : "khong can nhac"}`);
     if (!reason && !FORCE) continue;
