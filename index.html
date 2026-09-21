@@ -703,8 +703,13 @@
 /* ============================================================ LƯU TRỮ ============================================================ */
 const KEY = 'vocab_app_v1';
 let words = load();
+/* Dữ liệu học nằm trên Firestore. localStorage chỉ còn là bộ đệm tạm khi chưa đăng nhập. */
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ return []; } }
-function save(){ localStorage.setItem(KEY, JSON.stringify(words)); refreshBadges(); if(typeof scheduleCloudPush==='function') scheduleCloudPush(); }
+function save(){
+  refreshBadges();
+  if(typeof fbReady==='function' && fbReady() && fbUser){ schedulePersist(); }
+  else { try{ localStorage.setItem(KEY, JSON.stringify(words)); }catch(e){} }  // chưa đăng nhập: giữ tạm
+}
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function localDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function todayStr(){ return localDate(new Date()); }
@@ -1566,7 +1571,8 @@ function initFirebase(){
     if(!fbApp){
       fbApp=firebase.initializeApp(cfg);
       fbAuth=firebase.auth(); fbDb=firebase.firestore();
-      fbAuth.onAuthStateChanged(u=>{ fbUser=u; updateFbUI(); if(u){ pullFromCloud(); refreshPushToken(); startRealtimeSync(); } else if(fbUnsub){ try{fbUnsub();}catch(e){} fbUnsub=null; } });
+      try{ fbDb.enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}  // lưu offline bằng IndexedDB của Firestore
+      fbAuth.onAuthStateChanged(u=>{ fbUser=u; updateFbUI(); if(u){ migrateToDb().then(()=>{ pullFromCloud(); startRealtimeSync(); }); refreshPushToken(); } else if(wordsUnsub){ try{wordsUnsub();}catch(e){} wordsUnsub=null; } });
     }
     return true;
   }catch(e){ setFbStatus('Lỗi cấu hình Firebase: '+(e.message||e), true); fbApp=null; return false; }
@@ -1592,7 +1598,9 @@ function mergeWords(local, cloud){
   });
   return Object.values(map);
 }
-let fbUnsub=null, pendingRemote=null;
+let wordsUnsub=null, pendingRemote=null, persistTimer=null, savedSnap={};
+
+function wordsCol(){ return fbDb.collection('users').doc(fbUser.uid).collection('words'); }
 function sessionBusy(){
   try{
     if(typeof revSession!=='undefined' && revSession && revSession.queue && revSession.queue.length) return true;
@@ -1600,12 +1608,38 @@ function sessionBusy(){
   }catch(e){}
   return false;
 }
+
+/* Ghi các từ THAY ĐỔI lên Firestore (mỗi từ một document) */
+async function persistWords(){
+  if(!fbReady() || !fbUser) return;
+  try{
+    const col=wordsCol(); let batch=fbDb.batch(), n=0;
+    const seen={};
+    for(const w of words){
+      if(!w.id) w.id=uid();
+      seen[w.id]=1;
+      const js=JSON.stringify(w);
+      if(savedSnap[w.id]!==js){
+        batch.set(col.doc(w.id), w); savedSnap[w.id]=js; n++;
+        if(n%400===0){ await batch.commit(); batch=fbDb.batch(); }
+      }
+    }
+    for(const id of Object.keys(savedSnap)){
+      if(!seen[id]){ batch.delete(col.doc(id)); delete savedSnap[id]; n++; }
+    }
+    if(n%400!==0 || n===0){ if(n) await batch.commit(); }
+    if(n) setFbStatus('✔ Đã lưu '+n+' thay đổi lên database', false, true);
+  }catch(e){ setFbStatus('Lỗi lưu database: '+(e.message||e), true); }
+}
+function schedulePersist(){ clearTimeout(persistTimer); persistTimer=setTimeout(persistWords, 800); }
+
 function applyRemote(cloud){
-  const before=JSON.stringify(words.map(w=>[wordKey(w),w.updatedAt||0]).sort());
+  const key=arr=>JSON.stringify(arr.map(w=>[wordKey(w), w.updatedAt||0]).sort());
+  const before=key(words);
   words=mergeWords(words, cloud||[]);
-  const after=JSON.stringify(words.map(w=>[wordKey(w),w.updatedAt||0]).sort());
-  if(before===after) return false;
-  localStorage.setItem(KEY, JSON.stringify(words)); refreshBadges();
+  savedSnap={}; words.forEach(w=>{ if(w.id) savedSnap[w.id]=JSON.stringify(w); });
+  if(key(words)===before) return false;
+  refreshBadges();
   const act=document.querySelector('[data-panel]:not(.hidden)');
   const name=act?act.dataset.panel:'';
   if(name==='list') renderList();
@@ -1614,40 +1648,62 @@ function applyRemote(cloud){
   setFbStatus('✔ Đã nhận thay đổi từ thiết bị khác ('+words.length+' từ)', false, true);
   return true;
 }
-function startRealtimeSync(){
-  if(!fbReady() || !fbUser) return;
-  if(fbUnsub){ try{fbUnsub();}catch(e){} fbUnsub=null; }
-  fbUnsub = fbDb.collection('users').doc(fbUser.uid).onSnapshot(doc=>{
-    if(!doc.exists) return;
-    if(doc.metadata && doc.metadata.hasPendingWrites) return;   // bỏ qua ghi của chính mình
-    const cloud=doc.data().words||[];
-    if(sessionBusy()){ pendingRemote=cloud; return; }           // đang ôn thì hoãn lại
-    applyRemote(cloud);
-  }, err=>setFbStatus('Lỗi đồng bộ realtime: '+(err.message||err), true));
-}
 function flushPendingRemote(){
   if(pendingRemote && !sessionBusy()){ const c=pendingRemote; pendingRemote=null; applyRemote(c); }
 }
+
+/* Lắng nghe database theo thời gian thực */
+function startRealtimeSync(){
+  if(!fbReady() || !fbUser) return;
+  if(wordsUnsub){ try{wordsUnsub();}catch(e){} wordsUnsub=null; }
+  wordsUnsub = wordsCol().onSnapshot(snap=>{
+    if(snap.metadata && snap.metadata.hasPendingWrites) return;   // bỏ qua ghi của chính mình
+    const cloud=[]; snap.forEach(d=>cloud.push(d.data()));
+    if(sessionBusy()){ pendingRemote=cloud; return; }
+    applyRemote(cloud);
+  }, err=>setFbStatus('Lỗi đồng bộ: '+(err.message||err), true));
+}
+
+/* Chuyển dữ liệu cũ (localStorage + mảng words cũ) sang database — chạy 1 lần */
+async function migrateToDb(){
+  if(!fbReady() || !fbUser) return;
+  const FLAG='vocab_migrated_db_v1';
+  try{
+    let legacy=[]; try{ legacy=JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){}
+    const udoc=await fbDb.collection('users').doc(fbUser.uid).get();
+    const oldArr=(udoc.exists && udoc.data().words)||[];
+    let all=mergeWords(legacy, oldArr);
+    all=mergeWords(all, words);
+    if(all.length && !localStorage.getItem(FLAG)){
+      const col=wordsCol(); let batch=fbDb.batch(), n=0;
+      for(const w of all){
+        if(!w.id) w.id=uid();
+        batch.set(col.doc(w.id), w, {merge:true}); n++;
+        if(n%400===0){ await batch.commit(); batch=fbDb.batch(); }
+      }
+      if(n%400!==0) await batch.commit();
+      setFbStatus('✔ Đã chuyển '+n+' từ vào database', false, true);
+    }
+    localStorage.setItem(FLAG,'1');
+    try{ localStorage.removeItem(KEY); }catch(e){}
+  }catch(e){ setFbStatus('Lỗi chuyển dữ liệu: '+(e.message||e), true); }
+}
+
 async function pullFromCloud(){
   if(!fbReady() || !fbUser) return;
-  setFbStatus('Đang đồng bộ…');
+  setFbStatus('Đang tải từ database…');
   try{
-    const doc=await fbDb.collection('users').doc(fbUser.uid).get();
-    const cloud=(doc.exists && doc.data().words)||[];
+    const snap=await wordsCol().get();
+    const cloud=[]; snap.forEach(d=>cloud.push(d.data()));
     words=mergeWords(words, cloud);
-    localStorage.setItem(KEY, JSON.stringify(words)); refreshBadges();
-    renderList();
-    setFbStatus('✔ Đã đồng bộ '+words.length+' từ ('+(fbUser.email||'')+')', false, true);
-    pushToCloud();
-  }catch(e){ setFbStatus('Lỗi tải đám mây: '+(e.message||e), true); }
+    savedSnap={}; words.forEach(w=>{ if(w.id) savedSnap[w.id]=JSON.stringify(w); });
+    refreshBadges(); renderList();
+    setFbStatus('✔ '+words.length+' từ ('+(fbUser.email||'')+')', false, true);
+    await persistWords();
+  }catch(e){ setFbStatus('Lỗi tải database: '+(e.message||e), true); }
 }
-function pushToCloud(){
-  if(!fbReady() || !fbUser) return;
-  fbDb.collection('users').doc(fbUser.uid).set({ words, updatedAt: Date.now() }, {merge:true})
-    .then(()=>setFbStatus('✔ Đã lưu lên đám mây ('+words.length+' từ)', false, true))
-    .catch(e=>setFbStatus('Lỗi lưu đám mây: '+(e.message||e), true));
-}
-function scheduleCloudPush(){ if(!fbReady() || !fbUser) return; clearTimeout(fbPushTimer); fbPushTimer=setTimeout(pushToCloud, 1500); }
+function pushToCloud(){ persistWords(); }
+function scheduleCloudPush(){ schedulePersist(); }
 
 /* ===== Thông báo đẩy (FCM) ===== */
 let fbMessaging=null;
