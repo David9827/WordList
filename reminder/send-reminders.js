@@ -84,8 +84,18 @@ function decide(words, today, d) {
 
     // mỗi ngày tối đa 1 thông báo
     if (!FORCE && d.lastNotified === today) { console.log("    -> hom nay da gui roi"); continue; }
-    // tới hoặc qua giờ hay học thì gửi (chịu được việc cron GitHub chạy trễ)
-    if (!FORCE && nowH < ph) { console.log("    -> chua toi gio hay hoc"); continue; }
+
+    /* GitHub chỉ chạy lịch ~4-5 lan/ngay vao gio ngau nhien, nen khong the doi
+       dung 1 gio. Mo rong thanh CUA SO [gioHayHoc-3 .. cuoi ngay], va neu da lo
+       mat hon 1 ngay thi bat ky lan chay nao tu 9h tro di cung gui (bat kip). */
+    const startH = Math.max(0, ph - 3);
+    const gapDays = d.lastNotified ? dayDiff(d.lastNotified, today) : 99;
+    const inWindow = nowH >= startH;
+    const catchUp = gapDays >= 2 && nowH >= 9;
+    if (!FORCE && !inWindow && !catchUp) {
+      console.log(`    -> chua toi cua so gui (can >=${startH}h, dang ${nowH}h)`); continue;
+    }
+    if (catchUp && !inWindow) console.log(`    -> bat kip: da ${gapDays} ngay chua bao`);
 
     // Từ vựng nằm ở subcollection users/{uid}/words
     let words = [];
