@@ -10,6 +10,9 @@ const db = admin.firestore();
 const TZ = "Asia/Ho_Chi_Minh";
 const APP_URL = "https://david9827.github.io/WordList/";
 const FORCE = process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || process.env.FORCE === "1";
+const QUIET_FROM = 23;      // khong lam phien tu 23h
+const QUIET_TO = 7;         // den 7h sang
+const COOLDOWN_MIN = 90;    // cach nhau it nhat 90 phut
 
 const dstr = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ });
 const todayStr = () => dstr(new Date());
@@ -30,10 +33,13 @@ function decide(words, today, d) {
   const ws = (words || []).filter(Boolean);
   if (!ws.length) return null;
 
-  const due = ws.filter((w) => w.sr && w.sr.due && w.sr.due <= today).length;
+  const now = Date.now();
+  const isDue = (w) => w.sr && (w.sr.dueAt ? now >= w.sr.dueAt
+                                           : (w.sr.due && w.sr.due <= today));
+  const due = ws.filter(isDue).length;
   if (due > 0) {
     return { key: "due", title: "Đến giờ ôn từ 📚",
-             body: `Bạn có ${due} từ đến hạn ôn hôm nay — ôn ngay để nhớ lâu!` };
+             body: `Bạn có ${due} từ đến hạn ôn — ôn ngay để nhớ lâu!` };
   }
 
   // Từ thêm hôm nay mà chưa ôn lần nào (ôn lần đầu trong ngày giúp nhớ tốt hơn nhiều)
@@ -82,20 +88,17 @@ function decide(words, today, d) {
     console.log(`  user=${doc.id} tokens=${tokens.length} gioBao=${ph}h | themTuCuoi=${fmt(d.lastAddAt)} | luyenCuoi=${fmt(d.lastPracticeAt)} | daBao=${d.lastNotified||"-"}`);
     if (!tokens.length) continue;
 
-    // mỗi ngày tối đa 1 thông báo
-    if (!FORCE && d.lastNotified === today) { console.log("    -> hom nay da gui roi"); continue; }
 
-    /* GitHub chỉ chạy lịch ~4-5 lan/ngay vao gio ngau nhien, nen khong the doi
-       dung 1 gio. Mo rong thanh CUA SO [gioHayHoc-3 .. cuoi ngay], va neu da lo
-       mat hon 1 ngay thi bat ky lan chay nao tu 9h tro di cung gui (bat kip). */
-    const startH = Math.max(0, ph - 3);
-    const gapDays = d.lastNotified ? dayDiff(d.lastNotified, today) : 99;
-    const inWindow = nowH >= startH;
-    const catchUp = gapDays >= 2 && nowH >= 9;
-    if (!FORCE && !inWindow && !catchUp) {
-      console.log(`    -> chua toi cua so gui (can >=${startH}h, dang ${nowH}h)`); continue;
+    /* Lịch dueAt đã quyết định thời điểm -> không cần cửa sổ giờ nữa.
+       Chỉ tránh làm phiền ban đêm và giữ khoảng nghỉ giữa 2 thông báo. */
+    if (!FORCE && (nowH >= QUIET_FROM || nowH < QUIET_TO)) {
+      console.log(`    -> gio yen tinh (${nowH}h)`); continue;
     }
-    if (catchUp && !inWindow) console.log(`    -> bat kip: da ${gapDays} ngay chua bao`);
+    const lastAt = d.lastNotifiedAt || 0;
+    const minsSince = (Date.now() - lastAt) / 60000;
+    if (!FORCE && minsSince < COOLDOWN_MIN) {
+      console.log(`    -> moi bao ${Math.round(minsSince)} phut truoc (cho ${COOLDOWN_MIN}p)`); continue;
+    }
 
     // Từ vựng nằm ở subcollection users/{uid}/words
     let words = [];
@@ -115,7 +118,7 @@ function decide(words, today, d) {
       webpush: { fcmOptions: { link: APP_URL } },
     });
 
-    const update = { lastNotified: today };
+    const update = { lastNotified: today, lastNotifiedAt: Date.now() };
     res.responses.forEach((r, i) => {
       const code = r.success ? null : (r.error && r.error.code);
       if (code === "messaging/registration-token-not-registered" ||
